@@ -14,7 +14,7 @@ Description: A framework for the analysis and exploration of single-cell chromat
     and normalization, visualization, and DNA sequence motif analysis.
     Reference: Stuart et al. (2020) <doi:10.1101/2020.11.09.373613>.
 Depends:
-    R (>= 4.0.0),
+    R (>= 3.6.0),
     methods
 License: MIT + file LICENSE
 Encoding: UTF-8
@@ -30,8 +30,8 @@ Imports:
     Matrix,
     Rsamtools,
     S4Vectors,
-    Seurat (>= 4.0.0),
-    SeuratObject (>= 4.0.0),
+    Seurat (>= 3.0.0),
+    SeuratObject (>= 3.0.0),
     data.table,
     dplyr (>= 1.0.0),
     future,
