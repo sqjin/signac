@@ -262,10 +262,16 @@ CreateChromatinAssay <- function(
     if (!all(obj.class)) {
       stop("All objects in fragments list must be Fragment-class objects")
     }
-    frags <- fragments
+    frags <- lapply(
+      X = fragments,
+      FUN = AssignFragCellnames,
+      cellnames = colnames(x = seurat.assay)
+    )
    } else if (inherits(x = fragments, what = "Fragment")) {
     # single Fragment object supplied
-    frags <- fragments
+    frags <- AssignFragCellnames(
+      fragments = fragments, cellnames = colnames(x = seurat.assay)
+    )
   } else {
     # path to fragment file supplied, create fragment object
     frags <- list()
@@ -612,6 +618,10 @@ RenameCells.ChromatinAssay <- function(object, new.names = NULL, ...) {
 #' @export
 RenameCells.Fragment <- function(object, new.names, ...) {
   cells <- GetFragmentData(object = object, slot = "cells")
+  if (is.null(x = cells)) {
+    stop("Cannot rename cells in Fragment object ",
+         "with no cell information stored")
+  }
   cells <- cells[names(x = new.names)]
   names(x = cells) <- new.names[names(x = cells)]
   slot(object = object, name = "cells") <- cells
@@ -1147,7 +1157,7 @@ merge.ChromatinAssay <- function(
       if (all(count_nonzero > 0)) {
         merged.counts <- RowMergeSparseMatrices(
           mat1 = all.counts[[1]],
-          mat2 = all.counts[2:length(x = all.counts)]
+          mat2 = all.counts[[2:length(x = all.counts)]]
         )
         reduced.ranges <- StringToGRanges(regions = rownames(x = merged.counts))
       } else {
@@ -1157,7 +1167,7 @@ merge.ChromatinAssay <- function(
       if (all(data_nonzero > 0)) {
         merged.data <- RowMergeSparseMatrices(
           mat1 = all.data[[1]],
-          mat2 = all.data[2:length(x = all.data)]
+          mat2 = all.data[[2:length(x = all.data)]]
         )
         reduced.ranges <- SetIfNull(
           x = reduced.ranges,

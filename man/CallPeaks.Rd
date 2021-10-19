@@ -17,7 +17,9 @@ CallPeaks(object, ...)
   idents = NULL,
   macs2.path = NULL,
   broad = FALSE,
+  format = "BED",
   outdir = tempdir(),
+  fragment.tempdir = tempdir(),
   combine.peaks = TRUE,
   effective.genome.size = 2.7e+09,
   extsize = 200,
@@ -34,6 +36,7 @@ CallPeaks(object, ...)
   macs2.path = NULL,
   outdir = tempdir(),
   broad = FALSE,
+  format = "BED",
   effective.genome.size = 2.7e+09,
   extsize = 200,
   shift = -extsize/2,
@@ -49,6 +52,7 @@ CallPeaks(object, ...)
   macs2.path = NULL,
   outdir = tempdir(),
   broad = FALSE,
+  format = "BED",
   effective.genome.size = 2.7e+09,
   extsize = 200,
   shift = -extsize/2,
@@ -64,6 +68,7 @@ CallPeaks(object, ...)
   macs2.path = NULL,
   outdir = tempdir(),
   broad = FALSE,
+  format = "BED",
   effective.genome.size = 2.7e+09,
   extsize = 200,
   shift = -extsize/2,
@@ -88,9 +93,9 @@ peaks using subsets of cells we first split the fragment file/s used, so
 using a grouping variable will require extra time to split the files and
 perform multiple MACS peak calls, and will store additional files on-disk
 that may be large. Note that we store split fragment files in the temp
-directory, and if the program is interrupted before completing these
-temporary files will not be removed. If NULL, peaks are called using all
-cells together (pseudobulk).}
+directory (\code{\link[base]{tempdir}}) by default, and if the program is
+interrupted before completing these temporary files will not be removed. If
+NULL, peaks are called using all cells together (pseudobulk).}
 
 \item{idents}{List of identities to include if grouping cells (only valid if
 also setting the \code{group.by} parameter). If NULL, peaks will be called
@@ -101,7 +106,13 @@ automatically.}
 
 \item{broad}{Call broad peaks (\code{--broad} parameter for MACS)}
 
+\item{format}{File format to use. Should be either "BED" or "BEDPE" (see 
+MACS documentation).}
+
 \item{outdir}{Path for output files}
+
+\item{fragment.tempdir}{Path to write temporary fragment files. Only used if
+\code{group.by} is not NULL.}
 
 \item{combine.peaks}{Controls whether peak calls from different groups of
 cells are combined using \code{GenomicRanges::reduce} when calling peaks for
@@ -113,9 +124,10 @@ combining peaks.}
 \item{effective.genome.size}{Effective genome size parameter for MACS
 (\code{-g}). Default is the human effective genome size (2.7e9).}
 
-\item{extsize}{\code{extsize} parameter for MACS.}
+\item{extsize}{\code{extsize} parameter for MACS. Only relevant if 
+format="BED"}
 
-\item{shift}{\code{shift} parameter for MACS.}
+\item{shift}{\code{shift} parameter for MACS. Only relevant if format="BED"}
 
 \item{additional.args}{Additional arguments passed to MACS. This should be a
 single character string}

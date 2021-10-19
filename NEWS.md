@@ -1,3 +1,41 @@
+# Signac 1.4.0
+
+Bug fixes:
+
+* Fixed bug in `FindMotifs()` when using only one region as input ([#732](https://github.com/timoast/signac/issues/732))
+* Add check for correct number of columns in fragment file ([#748](https://github.com/timoast/signac/issues/748))
+* Fixed gene lookup when annotations contain NA values ([#771](https://github.com/timoast/signac/issues/771))
+* Fixed error in `ClosestFeature()` when query contained regions on contigs not present in gene annotation ([#758](https://github.com/timoast/signac/issues/758))
+* Fixed bug in `TSSEnrichment()` when using multiple fragment files ([#783](https://github.com/timoast/signac/issues/783))
+* Fixed bug in `CallPeaks()` when multiple fragment files used as input
+* Fixed bug in `CallPeaks()` to account for 0-based starts in called peaks
+* Fixed bug in gene name lookup when gene names contain `-` characters ([#759](https://github.com/timoast/signac/issues/759))
+
+Other changes:
+
+* Updated documentation for `genome` parameter in `AddMotifs()` and `RunChromVAR()` ([#712](https://github.com/timoast/signac/issues/712))
+* Updated the `FoldChange()` function to use normalized counts rather than raw counts ([#795](https://github.com/timoast/signac/issues/795))
+* Improved error checking in `GeneActivity()` ([#797](https://github.com/timoast/signac/issues/797))
+* Added `format` parameter to `CallPeaks()` ([#682](https://github.com/timoast/signac/issues/682))
+
+# Signac 1.3.0 
+
+Bug fixes:
+
+* Fixed `LinkPeaks()` function when running on a single gene ([#629](https://github.com/timoast/signac/issues/629))
+* Added `fragment.tempdir` parameter to `CallPeaks()` to enable setting directory
+that split fragment files are written to during peak calling ([#579](https://github.com/timoast/signac/issues/579))
+* Fixed error in `FeatureMatrix()` when setting `sep` parameter ([#626](https://github.com/timoast/signac/discussions/626))
+* Fixed peak calling error when group names contain special characters
+* Fixed issue with `RenameCells()` when cell information not present in Fragment object ([#704](https://github.com/timoast/signac/issues/704))
+
+Other changes: 
+
+* Improved error checking for `GeneActivity()` ([#625](https://github.com/timoast/signac/issues/625))
+* Added `FoldChange()` method for `ChromatinAssay()` object that sets proper parameters for 
+chromatin data. This fixes the calculation of fold changes when running `Seurat::FindMarkers()` on
+single-cell chromatin data.
+
 # Signac 1.2.1
 
 New functionality:

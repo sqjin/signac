@@ -57,6 +57,9 @@ CountFragments <- function(
   fragments <- normalizePath(path = fragments, mustWork = TRUE)
   max_lines <- SetIfNull(x = max_lines, y = 0)
   verbose = as.logical(x = verbose)
+  if (!is.null(x = cells)) {
+    cells <- unique(x = cells)
+  }
   counts <- groupCommand(
     fragments = fragments,
     some_whitelist_cells = cells,
@@ -287,6 +290,23 @@ CreateFragmentObject <- function(
   if (!file.exists(index.file) & !is.remote) {
     stop("Fragment file is not indexed.")
   }
+  if (is.remote) {
+    con <- gzcon(con = url(description = path))
+  } else {
+    con <- path
+  }
+  df <- readLines(con = con, n = 10000)
+  for (i in df) {
+    if (grepl(pattern = '^#', x = i)) {
+      next
+    } else {
+      if (length(x = strsplit(x = i, split = "\t")[[1]]) != 5) {
+        stop("Incorrect number of columns found in fragment file")
+      } else {
+        break
+      }
+    }
+  }
   if (!is.null(x = cells)) {
     if (is.null(names(x = cells))) {
       # assume cells are as they appear in the assay
@@ -506,4 +526,16 @@ UpdatePath <- function(object, new.path, verbose = TRUE) {
   } else {
     stop("MD5 sum does not match previously computed sum")
   }
+}
+
+# If Fragment object does not contain cell names, assign to given list of names
+# Used in CreateChromatinAssay when adding a Fragment object with no cell names
+#' @importFrom methods slot slot<-
+AssignFragCellnames <- function(fragments, cellnames) {
+  if (is.null(x = Cells(x = fragments))) {
+    cells <- cellnames
+    names(x = cells) <- cells
+    slot(object = fragments, name = "cells") <- cells
+  }
+  return(fragments)
 }

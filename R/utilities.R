@@ -194,6 +194,7 @@ CellsPerGroup <- function(
 #' @importFrom S4Vectors subjectHits mcols
 #' @importFrom methods is
 #' @importFrom Seurat DefaultAssay
+#' @importFrom GenomeInfoDb dropSeqlevels
 #' @return Returns a dataframe with the name of each region, the closest feature
 #' in the annotation, and the distance to the feature.
 #' @export
@@ -222,7 +223,28 @@ ClosestFeature <- function(
   if (!inherits(x = object, what = "ChromatinAssay")) {
     stop("The requested assay is not a ChromatinAssay.")
   }
+  if (length(x = regions) == 0) {
+    stop("No query regions supplied")
+  }
   annotation <- SetIfNull(x = annotation, y = Annotation(object = object))
+  missing_seqlevels <- setdiff(
+    x = seqlevels(x = regions), y = seqlevels(x = annotation)
+  )
+  if (length(x = missing_seqlevels) > 0) {
+    warning(
+      "The following seqlevels present in query regions are not present\n ",
+      "in the supplied gene annotations and will be removed: ",
+      paste(missing_seqlevels, collapse = ", ")
+    )
+    regions <- dropSeqlevels(
+      x = regions,
+      value = missing_seqlevels,
+      pruning.mode = "coarse"
+    )
+    if (length(x = regions) == 0) {
+      stop("None of the supplied regions were found in the supplied annotation")
+    }
+  }
   nearest_feature <- distanceToNearest(x = regions, subject = annotation)
   feature_hits <- annotation[subjectHits(x = nearest_feature)]
   df <- as.data.frame(x = mcols(x = feature_hits))
@@ -230,87 +252,6 @@ ClosestFeature <- function(
   df$query_region <- GRangesToString(grange = regions, ...)
   df$distance <- mcols(x = nearest_feature)$distance
   return(df)
-}
-
-#' Compute fold change between two groups of cells
-#'
-#' Computes the fold change or log2 fold change (if \code{log=TRUE}) in average
-#' counts between two groups of cells.
-#'
-#' @param object A Seurat object
-#' @param assay Name of assay to use. If NULL, use the default assay.
-#' @param group.by Grouping variable to use. If NULL, use the current cell
-#' identities.
-#' @param ident.1 Identities of first group of cells to compare.
-#' @param ident.2 Identities of second group of cells to compare. If NULL,
-#' compare cells in the first group to all other cells.
-#' @param cutoff Mean count cutoff for classifying as "open". Only used for
-#' ordering results. Results will be ordered first by whether the average counts
-#' in ident.1 is greater than the cutoff value, then by fold change with respect
-#' to ident.2. This prevents very lowly detected peaks from being pushed to the
-#' top of the results due to high fold change values.
-#' @param verbose Display messages
-#'
-#' @importFrom Seurat Idents Idents<- AverageExpression DefaultAssay
-#'
-#' @return Returns a data.frame
-#' @export
-#' @concept utilities
-#' @examples
-#' \donttest{
-#' fc <- FoldChange(object = atac_small, ident.1 = 0)
-#' head(fc)
-#' }
-FoldChange <- function(
-  object,
-  ident.1,
-  ident.2 = NULL,
-  group.by = NULL,
-  cutoff = 0.5,
-  assay = NULL,
-  verbose = TRUE
-) {
-  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
-  if (is.null(x = group.by)) {
-    # stash current idents
-    object$fc_tmp_group_var <- Idents(object = object)
-  } else {
-    # create temp grouping variable
-    object$fc_tmp_group_var <- object[[group.by]]
-  }
-  if (is.null(x = ident.2)) {
-    # if ident.2 is NULL create a new grouping variable
-    # that separates ident.1 from all other cells
-    ident.2 <- "all_other"
-    object$fc_tmp_group_var <- ifelse(
-      test = object$fc_tmp_group_var == ident.1,
-      yes = as.character(x = object$fc_tmp_group_var),
-      no = ident.2
-    )
-  }
-  ident.stash <- Idents(object = object)
-  Idents(object = object) <- "fc_tmp_group_var"
-  # compute average counts for each group
-  avg <- AverageExpression(
-    object = object,
-    assays = assay,
-    slot = "counts",
-    verbose = verbose
-  )[[assay]]
-  avg <- as.data.frame(x = avg)
-  Idents(object = object) <- ident.stash
-  # compute fold change
-  colnames(x = avg) <- paste0("mean_", colnames(x = avg))
-  avg$fold_change <- avg[[paste0("mean_", ident.1)]] /
-    avg[[paste0("mean_", ident.2)]]
-  avg$log2_fold_change <- log2(x = avg$fold_change)
-  # add open/closed
-  avg$open <- avg[[paste0("mean_", ident.1)]] > cutoff
-  # sort by fold change
-  avg <- avg[order(-avg$open, -avg$fold_change), ]
-  # wipe temporary metadata
-  object$fc_tmp_group_var <- NULL
-  return(avg)
 }
 
 #' Create gene activity matrix
@@ -357,6 +298,11 @@ GeneActivity <- function(
   verbose = TRUE,
   ...
 ) {
+  if (!is.null(x = features)) {
+    if (length(x = features) == 0) {
+      stop("Empty list of features provided")
+    }
+  }
   # collapse to longest protein coding transcript
   assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
   if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
@@ -372,15 +318,24 @@ GeneActivity <- function(
   transcripts <- CollapseToLongestTranscript(ranges = annotation)
   if (!is.null(x = biotypes)) {
     transcripts <- transcripts[transcripts$gene_biotype %in% biotypes]
+    if (length(x = transcripts) == 0) {
+      stop("No genes remaining after filtering for requested biotypes")
+    }
   }
 
   # filter genes if provided
   if (!is.null(x = features)) {
     transcripts <- transcripts[transcripts$gene_name %in% features]
+    if (length(x = transcripts) == 0) {
+      stop("None of the requested genes were found in the gene annotation")
+    }
   }
   if (!is.null(x = max.width)) {
     transcript.keep <- which(x = width(x = transcripts) < max.width)
     transcripts <- transcripts[transcript.keep]
+    if (length(x = transcripts) == 0) {
+      stop("No genes remaining after filtering for max.width")
+    }
   }
 
   # extend to include promoters
@@ -392,6 +347,9 @@ GeneActivity <- function(
 
   # quantify
   frags <- Fragments(object = object[[assay]])
+  if (length(x = frags) == 0) {
+    stop("No fragment information found for requested assay")
+  }
   cells <- colnames(x = object[[assay]])
   counts <- FeatureMatrix(
     fragments = frags,
@@ -858,7 +816,9 @@ LookupGeneCoords <- function(object, gene, assay = NULL) {
     stop("The requested assay is not a ChromatinAssay")
   }
   annotations <- Annotation(object = object[[assay]])
-  annot.sub <- annotations[annotations$gene_name == gene]
+  isgene <- annotations$gene_name == gene
+  isgene <- !is.na(x = isgene) & isgene
+  annot.sub <- annotations[isgene]
   if (length(x = annot.sub) == 0) {
     return(NULL)
   } else {
@@ -1284,15 +1244,22 @@ FindRegion <- function(
   extend.downstream = 0
 ) {
   if (!is(object = region, class2 = "GRanges")) {
-    # if separators are present in the string and we can convert the
-    # start to a number, assume we're using genomic coordinates
-    if (all(sapply(X = sep, FUN = grepl, x = region))) {
-      region <- StringToGRanges(regions = region, sep = sep)
-    } else {
-      region <- LookupGeneCoords(object = object, assay = assay, gene = region)
-      if (is.null(x = region)) {
-        stop("Gene not found")
+    # first try to convert to coordinates, if not lookup gene
+    region <- tryCatch(
+      expr = suppressWarnings(
+        expr = StringToGRanges(regions = region, sep = sep)
+      ),
+      error = function(x) {
+        region <- LookupGeneCoords(
+          object = object,
+          assay = assay,
+          gene = region
+        )
+        return(region)
       }
+    )
+    if (is.null(x = region)) {
+      stop("Gene not found")
     }
   }
   region <- suppressWarnings(expr = Extend(
@@ -1352,7 +1319,6 @@ GetReadsInRegion <- function(
     pruning.mode = "coarse"
   )
   reads <- scanTabix(file = tabix.file, param = region)
-  invisible(x = gc(verbose = FALSE))
   reads <- TabixOutputToDataFrame(reads = reads)
   reads <- reads[
     fmatch(x = reads$cell, table = cellmap, nomatch = 0L) > 0,
@@ -1820,6 +1786,17 @@ TabixOutputToDataFrame <- function(reads, record.ident = TRUE) {
     nrep <- elementNROWS(x = reads)
   }
   reads <- unlist(x = reads, use.names = FALSE)
+  if (length(x = reads) == 0) {
+    df <- data.frame(
+      "chr" = "",
+      "start" = "",
+      "end" = "",
+      "cell" = "",
+      "count" = ""
+    )
+    df <- df[-1, ]
+    return(df)
+  }
   reads <- stri_split_fixed(str = reads, pattern = "\t")
   n <- length(x = reads[[1]])
   unlisted <- unlist(x = reads)

@@ -11,9 +11,9 @@ NULL
 #' using a grouping variable will require extra time to split the files and
 #' perform multiple MACS peak calls, and will store additional files on-disk
 #' that may be large. Note that we store split fragment files in the temp
-#' directory, and if the program is interrupted before completing these
-#' temporary files will not be removed. If NULL, peaks are called using all
-#' cells together (pseudobulk).
+#' directory (\code{\link[base]{tempdir}}) by default, and if the program is
+#' interrupted before completing these temporary files will not be removed. If
+#' NULL, peaks are called using all cells together (pseudobulk).
 #' @param idents List of identities to include if grouping cells (only valid if
 #' also setting the \code{group.by} parameter). If NULL, peaks will be called
 #' for all cell identities.
@@ -26,11 +26,16 @@ NULL
 #' p-value, q-value, and fold-change information for each peak will be lost if
 #' combining peaks.
 #' @param broad Call broad peaks (\code{--broad} parameter for MACS)
+#' @param format File format to use. Should be either "BED" or "BEDPE" (see 
+#' MACS documentation).
 #' @param outdir Path for output files
+#' @param fragment.tempdir Path to write temporary fragment files. Only used if
+#' \code{group.by} is not NULL.
 #' @param effective.genome.size Effective genome size parameter for MACS
 #' (\code{-g}). Default is the human effective genome size (2.7e9).
-#' @param extsize \code{extsize} parameter for MACS.
-#' @param shift \code{shift} parameter for MACS.
+#' @param extsize \code{extsize} parameter for MACS. Only relevant if 
+#' format="BED"
+#' @param shift \code{shift} parameter for MACS. Only relevant if format="BED"
 #' @param additional.args Additional arguments passed to MACS. This should be a
 #' single character string
 #' @param name Name for output MACS files. This will also be placed in the
@@ -56,7 +61,9 @@ CallPeaks.Seurat <- function(
   idents = NULL,
   macs2.path = NULL,
   broad = FALSE,
+  format = "BED",
   outdir = tempdir(),
+  fragment.tempdir = tempdir(),
   combine.peaks = TRUE,
   effective.genome.size = 2.7e9,
   extsize = 200,
@@ -81,14 +88,19 @@ CallPeaks.Seurat <- function(
       stop("MACS2 not found. Please install MACS:",
            "https://macs3-project.github.io/MACS/")
     }
-
+    if (fragment.tempdir != tempdir()) {
+      if (!dir.exists(paths = fragment.tempdir)) {
+        warning("Requested output directory does not exist, creating directory")
+        dir.create(path = fragment.tempdir)
+      }
+    }
     # split fragment files
     SplitFragments(
       object = object,
       assay = assay,
       group.by = group.by,
       idents = idents,
-      outdir = tempdir(),
+      outdir = fragment.tempdir,
       verbose = verbose
     )
 
@@ -106,7 +118,7 @@ CallPeaks.Seurat <- function(
     grlist <- list()
     for (i in seq_along(along.with = unique.groups)) {
       fragpath <- paste0(
-        tempdir(),
+        fragment.tempdir,
         .Platform$file.sep,
         unique.groups[[i]],
         ".bed"
@@ -116,6 +128,7 @@ CallPeaks.Seurat <- function(
         macs2.path = macs2.path,
         outdir = outdir,
         broad = broad,
+        format = format,
         effective.genome.size = effective.genome.size,
         extsize = extsize,
         shift = shift,
@@ -156,6 +169,7 @@ CallPeaks.Seurat <- function(
       macs2.path = macs2.path,
       outdir = outdir,
       broad = broad,
+      format = format,
       effective.genome.size = effective.genome.size,
       extsize = extsize,
       shift = shift,
@@ -178,6 +192,7 @@ CallPeaks.ChromatinAssay <- function(
   macs2.path = NULL,
   outdir = tempdir(),
   broad = FALSE,
+  format = "BED",
   effective.genome.size = 2.7e9,
   extsize = 200,
   shift = -extsize/2,
@@ -191,12 +206,12 @@ CallPeaks.ChromatinAssay <- function(
   frags <- Fragments(object = object)
   # get all fragment file paths
   allfragpaths <- sapply(X = frags, FUN = GetFragmentData, slot = "path")
-  allfragpaths <- Reduce(f = paste, x = allfragpaths)
   gr <- CallPeaks(
     object = allfragpaths,
     macs2.path = macs2.path,
     outdir = outdir,
     broad = broad,
+    format = format,
     effective.genome.size = effective.genome.size,
     extsize = extsize,
     shift = shift,
@@ -218,6 +233,7 @@ CallPeaks.Fragment <- function(
   macs2.path = NULL,
   outdir = tempdir(),
   broad = FALSE,
+  format = "BED",
   effective.genome.size = 2.7e9,
   extsize = 200,
   shift = -extsize/2,
@@ -233,6 +249,7 @@ CallPeaks.Fragment <- function(
     macs2.path = macs2.path,
     outdir = outdir,
     broad = broad,
+    format = format,
     effective.genome.size = effective.genome.size,
     extsize = extsize,
     shift = shift,
@@ -256,6 +273,7 @@ CallPeaks.default <- function(
   macs2.path = NULL,
   outdir = tempdir(),
   broad = FALSE,
+  format = "BED",
   effective.genome.size = 2.7e9,
   extsize = 200,
   shift = -extsize/2,
@@ -280,11 +298,25 @@ CallPeaks.default <- function(
 
   # if list of paths given, collapse to a single space-separated string
   if (length(x = object) > 1) {
+    object <- sapply(
+      X = object, FUN = function(x) paste0("'", x, "'"), USE.NAMES = FALSE
+    )
     object <- Reduce(f = paste, x = object)
+  } else {
+    object <- paste0("'", object, "'")
   }
 
   broadstring <- ifelse(test = broad, yes = " --broad ", no = "")
-
+  nomod_str <- ifelse(
+    test = format == "BED",
+    yes = paste0(" --nomodel --extsize ",
+    as.character(x = extsize),
+    " --shift ",
+    as.character(x = shift)
+    ),
+    no = ""
+  )
+  
   cmd <- paste0(
     macs2.path,
     " callpeak -t ",
@@ -292,12 +324,13 @@ CallPeaks.default <- function(
     " -g ",
     as.character(x = effective.genome.size),
     broadstring,
-    " -f BED --nomodel --extsize ",
-    as.character(x = extsize),
-    " --shift ",
-    as.character(x = shift),
+    " -f ",
+    format,
+    nomod_str,
     " -n ",
+    "'",
     as.character(x = name),
+    "'",
     " --outdir ",
     outdir,
     " ",
@@ -339,7 +372,7 @@ CallPeaks.default <- function(
     )
   }
 
-  gr <- makeGRangesFromDataFrame(df = df, keep.extra.columns = TRUE)
+  gr <- makeGRangesFromDataFrame(df = df, keep.extra.columns = TRUE, starts.in.df.are.0based = TRUE)
   if (cleanup) {
     files.to.remove <- paste0(outdir, .Platform$file.sep, files.to.remove)
     for (i in files.to.remove) {
